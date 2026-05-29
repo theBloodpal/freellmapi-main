@@ -2428,9 +2428,6 @@
       const selectedModel = modelSelect ? modelSelect.value : "auto";
       const systemPrompt = PERSONAS[currentPersona].systemPrompt;
 
-      // Separate text files and image files
-      const textFiles = filesToSend.filter(f => f.type !== 'image');
-      const imageFiles = filesToSend.filter(f => f.type === 'image');
 
       // Construct final user content payload with injected file contexts
       let textPrompt = prompt;

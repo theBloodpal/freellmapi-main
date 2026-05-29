@@ -1270,7 +1270,9 @@
     }
 
     // Configuration & Settings
-    const API_URL = "http://localhost:3001/v1/chat/completions";
+    const API_URL = window.location.origin.startsWith('file://') || window.location.origin === 'null'
+      ? "http://localhost:3001/v1/chat/completions"
+      : `${window.location.origin}/v1/chat/completions`;
     const DEFAULT_KEY = "freellmapi-e52fe62683154d080a5ce83401ede49bd3d731ee0ac95e79";
 
     // Personas Definitions

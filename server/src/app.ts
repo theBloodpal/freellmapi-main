@@ -67,12 +67,19 @@ export function createApp() {
   // Error handler (for API routes)
   app.use(errorHandler);
 
+  // Serve agent-app static chatbot interface
+  const agentAppDir = path.resolve(__dirname, '../../agent-app');
+  app.use('/agent', express.static(agentAppDir));
+  app.get('/agent', (_req, res) => {
+    res.sendFile(path.join(agentAppDir, 'index.html'));
+  });
+
   // Serve client static files (after API error handler)
   const clientDist = path.resolve(__dirname, '../../client/dist');
   app.use(express.static(clientDist));
   // SPA fallback — serve index.html for non-API routes
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/v1/')) {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/v1/') || req.path.startsWith('/agent')) {
       next();
       return;
     }

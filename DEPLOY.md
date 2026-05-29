@@ -75,32 +75,41 @@ Once deployed, Fly will output your public app URL (e.g., `https://your-app-name
 
 ---
 
-## Option 2: Render.com (Simple UI-based PaaS)
+## Option 2: Render.com + Supabase Storage (100% Free & No Credit Card Required)
 
-Render makes it easy to deploy Docker applications, though a persistent disk is only available on their paid instance types (starting at ~$7/month).
+Render allows you to deploy Docker web services completely for free without entering a credit card. However, Render's Free tier does not support persistent disks. 
 
-### 1. Push Code to GitHub
-Ensure you have committed your changes (including the `Dockerfile` and `.dockerignore`) and pushed them to your GitHub repository.
+To solve this, we have integrated an automatic database backup/restore sync that stores your SQLite database (`freeapi.db`) inside a **completely free, cardless Supabase Storage bucket**. Every time Render restarts your app, it restores your database from Supabase, and whenever you make changes (like adding API keys), it pushes the updates back to Supabase.
 
-### 2. Create a Web Service on Render
+### 1. Set up your Free Supabase Account
+1. Go to [Supabase](https://supabase.com) and sign up for a free account (no credit card required).
+2. Create a new project (e.g., `freellmapi-db`).
+3. Once the project is ready:
+   - In the left sidebar, click **Storage**.
+   - Click **New Bucket**. Name it `database` and keep it private.
+4. Go to **Project Settings** (gear icon) > **API**:
+   - Copy the **Project URL**.
+   - Copy the **`service_role` secret API key** (do not use the `anon public` key, as the service key is required to write to the storage bucket).
+
+### 2. Push Code to GitHub
+Ensure you have committed your changes (including the `Dockerfile`, `DEPLOY.md`, and new database sync files) and pushed them to your GitHub repository.
+
+### 3. Create a Web Service on Render
 1. Log in to [Render Dashboard](https://dashboard.render.com/) and click **New > Web Service**.
 2. Connect your GitHub repository.
 3. Configure the service:
    - **Name**: `freellmapi`
    - **Environment**: `Docker`
-   - **Instance Type**: Select **Starter** or higher (persistent disks are not supported on the free instance type).
-4. Click **Advanced** and add the following:
-   - **Environment Variables**:
-     - Key: `ENCRYPTION_KEY`, Value: `your-64-character-hex-key`
-     - Key: `PORT`, Value: `3001`
-   - **Disk (Persistent Storage)**:
-     - Click **Add Disk**.
-     - **Name**: `freellmapi-data`
-     - **Mount Path**: `/app/server/data`
-     - **Size**: `1 GiB` (minimum size)
+   - **Instance Type**: Select **Free** (no credit card required!).
+4. Click **Advanced** and add the following **Environment Variables**:
+   - `ENCRYPTION_KEY`: `your-64-character-hex-key`
+   - `PORT`: `3001`
+   - `SUPABASE_URL`: `https://your-project-id.supabase.co` (from your Supabase settings)
+   - `SUPABASE_KEY`: `your-supabase-service_role-key`
+   - `SUPABASE_BUCKET`: `database`
 5. Click **Create Web Service**.
 
-Render will build the Docker container and deploy it, serving the app on HTTPS.
+Render will build and deploy your container completely for free. Once running, it will automatically connect to your Supabase bucket, download the database on startup, and sync back changes whenever keys are edited!
 
 ---
 

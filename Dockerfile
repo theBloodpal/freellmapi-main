@@ -23,6 +23,7 @@ RUN npm ci
 COPY shared/ ./shared/
 COPY server/ ./server/
 COPY client/ ./client/
+COPY agent-app/ ./agent-app/
 
 # Build both client (React SPA) and server (TypeScript backend)
 RUN npm run build
@@ -48,6 +49,7 @@ COPY --from=builder /app/server/package.json ./server/
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/client/package.json ./client/
 COPY --from=builder /app/client/dist ./client/dist
+COPY --from=builder /app/agent-app ./agent-app
 
 # Create SQLite database directory (this is where persistent volumes should be mounted)
 RUN mkdir -p /app/server/data

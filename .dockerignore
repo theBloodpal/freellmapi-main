@@ -1,0 +1,17 @@
+node_modules
+client/node_modules
+server/node_modules
+shared/node_modules
+client/dist
+server/dist
+server/data
+data
+.env
+.git
+.github
+*.db
+*.db-journal
+*.db-wal
+npm-debug.log
+yarn-error.log
+.DS_Store

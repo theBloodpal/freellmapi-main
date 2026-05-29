@@ -1,0 +1,19 @@
+services:
+  freellmapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: freellmapi
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      - PORT=3001
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DASHBOARD_ORIGINS=${DASHBOARD_ORIGINS}
+    volumes:
+      - freellmapi_data:/app/server/data
+
+volumes:
+  freellmapi_data:
+    driver: local

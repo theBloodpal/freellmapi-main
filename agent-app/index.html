@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- JSZip for zip file support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     :root {
       --bg-color: #080c14;
@@ -1078,6 +1080,36 @@
         transform: scale(1.0);
       }
     }
+    
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 100;
+        height: 100vh;
+        box-shadow: 5px 0 25px rgba(0, 0, 0, 0.5);
+      }
+      .console-sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        z-index: 100;
+        height: 100vh;
+        box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+      }
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+        margin-left: 0;
+      }
+      .console-sidebar.collapsed {
+        transform: translateX(100%);
+        margin-right: 0;
+      }
+      .persona-pills {
+        display: none; /* Hide persona pills in header on small mobile screens to save space */
+      }
+    }
   </style>
 </head>
 
@@ -1191,7 +1223,7 @@
         <div class="input-box-wrapper">
           <!-- Hidden file input -->
           <input type="file" id="file-attachment-input" style="display: none;" multiple
-            accept=".txt,.js,.py,.html,.css,.json,.md,.rs,.ts,.go,.java,.c,.cpp,.h,.cjs,.mjs,.sh,.yaml,.yml,.sql,.xml,.ini,.conf">
+            accept=".txt,.js,.py,.html,.css,.json,.md,.rs,.ts,.go,.java,.c,.cpp,.h,.cjs,.mjs,.sh,.yaml,.yml,.sql,.xml,.ini,.conf,.zip,.png,.jpg,.jpeg,.webp,.gif">
           <button id="attach-btn" class="attach-btn" title="Attach file (text or code)">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
               <path
@@ -1595,14 +1627,54 @@
 
     function handleAttachFiles(filesList) {
       for (const file of filesList) {
-        // Read file contents as text
-        if (file.size > 1.5 * 1024 * 1024) {
+        if (file.name.endsWith('.zip')) {
+          log(`Reading zip archive: "${file.name}"...`, "process");
+          const zipReader = new FileReader();
+          zipReader.onload = async function (e) {
+            try {
+              const zip = await JSZip.loadAsync(e.target.result);
+              let count = 0;
+              const allowedExts = ['txt','js','py','html','css','json','md','rs','ts','go','java','c','cpp','h','cjs','mjs','sh','yaml','yml','sql','xml','ini','conf'];
+              
+              for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                if (!zipEntry.dir) {
+                  const ext = relativePath.split('.').pop().toLowerCase();
+                  if (allowedExts.includes(ext) || zipEntry.name.startsWith('README') || zipEntry.name.startsWith('LICENSE')) {
+                    const text = await zipEntry.async("string");
+                    const namePath = `${file.name}/${relativePath}`;
+                    if (!attachedFiles.some(f => f.name === namePath)) {
+                      attachedFiles.push({
+                        name: namePath,
+                        content: text,
+                        type: 'text'
+                      });
+                      count++;
+                    }
+                  }
+                }
+              }
+              renderAttachmentBadges();
+              log(`Extracted ${count} text/code files from "${file.name}"`, "success");
+              updateSendButtonState();
+            } catch (err) {
+              log(`Failed to parse zip "${file.name}": ${err.message}`, "error");
+            }
+          };
+          zipReader.onerror = function () {
+            log(`Failed to read file: "${file.name}"`, "error");
+          };
+          zipReader.readAsArrayBuffer(file);
+          continue;
+        }
+
+        const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+        
+        if (file.size > 1.5 * 1024 * 1024 && !isImage) {
           log(`Warning: File "${file.name}" is larger than 1.5MB. Loading might take longer or hit proxy constraints.`, "error");
         }
 
         const reader = new FileReader();
         reader.onload = function (e) {
-          // Prevent duplicates
           if (attachedFiles.some(f => f.name === file.name)) {
             log(`File "${file.name}" is already attached.`, "info");
             return;
@@ -1610,7 +1682,8 @@
 
           attachedFiles.push({
             name: file.name,
-            content: e.target.result
+            content: e.target.result,
+            type: isImage ? 'image' : 'text'
           });
           renderAttachmentBadges();
           log(`Successfully loaded and attached: "${file.name}"`, "success");
@@ -1619,9 +1692,13 @@
         reader.onerror = function () {
           log(`Failed to read file: "${file.name}"`, "error");
         };
-        reader.readAsText(file);
+
+        if (isImage) {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
       }
-      // Reset input value so same file can be selected again
       if (fileAttachmentInput) {
         fileAttachmentInput.value = "";
       }
@@ -1633,8 +1710,9 @@
       attachedFiles.forEach((file, index) => {
         const badge = document.createElement("div");
         badge.className = "attachment-badge";
+        const icon = file.type === 'image' ? '🖼️' : '📄';
         badge.innerHTML = `
-          <span class="attachment-badge-icon">📄</span>
+          <span class="attachment-badge-icon">${icon}</span>
           <span class="attachment-badge-name" title="${file.name}">${file.name}</span>
           <button class="attachment-badge-remove" title="Remove attachment">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1739,9 +1817,27 @@
     // New Chat Button
     if (newChatBtn) {
       newChatBtn.addEventListener("click", () => {
-        createNewConversation(currentPersona);
-        renderActiveMessages();
-        log("Started a new conversation session.", "info");
+        // Clear input text and reset height when starting a new chat
+        if (chatInput) {
+          chatInput.value = "";
+          chatInput.style.height = "auto";
+        }
+        
+        // Prevent duplicate empty conversations by checking if current is already empty
+        const emptyConv = conversations.find(c => c.messages.length === 0);
+        if (emptyConv) {
+          selectConversation(emptyConv.id);
+          log("Switched to existing empty chat session.", "info");
+        } else {
+          createNewConversation(currentPersona);
+          renderActiveMessages();
+          log("Started a new conversation session.", "info");
+        }
+        
+        // Scroll the history list to the top
+        if (chatHistoryList) {
+          chatHistoryList.scrollTop = 0;
+        }
       });
     }
 
@@ -1942,6 +2038,154 @@
       });
     }
 
+    // Client-side GitHub Repository Crawling
+    async function fetchGithubUrl(url) {
+      const regex = /https?:\/\/(?:www\.)?github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)(?:\/(blob|tree)\/([a-zA-Z0-9_.\-\/]+))?/i;
+      const match = url.match(regex);
+      if (!match) return null;
+
+      const owner = match[1];
+      let repo = match[2];
+      if (repo.endsWith('.git')) repo = repo.slice(0, -4);
+
+      const typeAndPath = match[3];
+      let type = null;
+      let branch = 'main';
+      let path = '';
+
+      if (typeAndPath) {
+        if (typeAndPath.startsWith('blob/')) {
+          type = 'blob';
+          const parts = typeAndPath.slice(5).split('/');
+          branch = parts[0];
+          path = parts.slice(1).join('/');
+        } else if (typeAndPath.startsWith('tree/')) {
+          type = 'tree';
+          const parts = typeAndPath.slice(5).split('/');
+          branch = parts[0];
+          path = parts.slice(1).join('/');
+        }
+      }
+
+      log(`Processing GitHub link: ${owner}/${repo} (${type || 'repo'})...`, "process");
+
+      if (type === 'blob') {
+        log(`Downloading single file: ${path} from branch ${branch}...`, "process");
+        try {
+          const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+          const res = await fetch(rawUrl);
+          if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+          const content = await res.text();
+          return [{
+            name: `${owner}/${repo}/${path}`,
+            content: content,
+            type: 'text'
+          }];
+        } catch (e) {
+          log(`Failed to download single file: ${e.message}.`, "error");
+          return [];
+        }
+      }
+
+      try {
+        let activeBranch = branch;
+        if (!typeAndPath) {
+          const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`);
+          if (repoRes.ok) {
+            const repoData = await repoRes.json();
+            activeBranch = repoData.default_branch || 'main';
+          }
+        }
+
+        log(`Fetching file tree for ${owner}/${repo} at branch/ref: ${activeBranch}...`, "process");
+        const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${activeBranch}?recursive=1`);
+        if (!treeRes.ok) {
+          throw new Error(`Failed to fetch repository tree: ${treeRes.statusText}`);
+        }
+        const treeData = await treeRes.json();
+        if (!treeData.tree || !Array.isArray(treeData.tree)) {
+          throw new Error("Invalid repository tree structure");
+        }
+
+        let fileEntries = treeData.tree.filter(item => item.type === 'blob');
+        
+        if (type === 'tree' && path) {
+          fileEntries = fileEntries.filter(item => item.path.startsWith(path + '/'));
+          log(`Filtered to directory: ${path} (${fileEntries.length} files found)`, "info");
+        }
+
+        const allowedExts = ['txt','js','py','html','css','json','md','rs','ts','go','java','c','cpp','h','cjs','mjs','sh','yaml','yml','sql','xml','ini','conf','toml','gradle'];
+        
+        const scoredFiles = fileEntries.map(item => {
+          const filePath = item.path;
+          const parts = filePath.split('/');
+          const name = parts[parts.length - 1];
+          const ext = name.split('.').pop().toLowerCase();
+          
+          let score = 0;
+          
+          if (filePath.includes('node_modules/') || 
+              filePath.includes('vendor/') || 
+              filePath.includes('.git/') || 
+              filePath.includes('dist/') || 
+              filePath.includes('build/') || 
+              filePath.includes('out/') ||
+              name.endsWith('.lock') || 
+              name === 'package-lock.json' || 
+              name === 'yarn.lock' || 
+              name === 'pnpm-lock.yaml') {
+            return { item, score: -100 };
+          }
+
+          if (!allowedExts.includes(ext) && !name.toUpperCase().startsWith('README') && !name.toUpperCase().startsWith('LICENSE')) {
+            return { item, score: -50 };
+          }
+
+          if (name.toUpperCase().startsWith('README')) score += 100;
+          if (name === 'package.json' || name === 'requirements.txt' || name === 'cargo.toml' || name === 'go.mod') score += 80;
+          
+          const relativeDepth = type === 'tree' ? parts.length - path.split('/').length : parts.length;
+          if (relativeDepth <= 1) score += 30;
+          
+          if (name.match(/^(index|main|app|server|client|run)\.(js|ts|py|go|rs)$/i)) score += 40;
+          if (item.size && item.size < 50000) score += 20;
+
+          return { item, score };
+        });
+
+        const filteredScored = scoredFiles
+          .filter(f => f.score >= 0)
+          .sort((a, b) => b.score - a.score);
+
+        const topFiles = filteredScored.slice(0, 12).map(f => f.item);
+        log(`Downloading ${topFiles.length} files from ${owner}/${repo}...`, "process");
+
+        const downloadedFiles = [];
+        for (const file of topFiles) {
+          try {
+            const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${activeBranch}/${file.path}`;
+            const contentRes = await fetch(rawUrl);
+            if (contentRes.ok) {
+              const content = await contentRes.text();
+              downloadedFiles.push({
+                name: `${owner}/${repo}/${file.path}`,
+                content: content,
+                type: 'text'
+              });
+              log(`Downloaded: ${file.path} (${(file.size / 1024).toFixed(1)} KB)`, "success");
+            }
+          } catch (err) {
+            log(`Failed to download ${file.path}: ${err.message}`, "error");
+          }
+        }
+
+        return downloadedFiles;
+      } catch (e) {
+        log(`Failed to process tree/repo for ${owner}/${repo}: ${e.message}`, "error");
+        return [];
+      }
+    }
+
     // Submit handler
     async function handleSubmit() {
       if (!chatInput) return;
@@ -1954,38 +2198,12 @@
       chatInput.style.height = "auto";
 
       // Hold a copy of the attached files for this transaction, then clear the UI list
-      const filesToSend = [...attachedFiles];
+      let filesToSend = [...attachedFiles];
       attachedFiles = [];
       renderAttachmentBadges();
       updateSendButtonState();
 
-      // Create user message representation for the UI (with small document icons)
-      let uiDisplayPrompt = prompt;
-      if (filesToSend.length > 0) {
-        const fileListStr = filesToSend.map(f => `📄 \`${f.name}\``).join(', ');
-        uiDisplayPrompt = (prompt ? prompt + "\n\n" : "") + `*Analyzed attachments:* ${fileListStr}`;
-      }
-
-      log(`User query submitted: "${prompt.substring(0, 40)}${prompt.length > 40 ? '...' : ''}"${filesToSend.length > 0 ? ` (with ${filesToSend.length} files)` : ''}`);
-
-      // Add user message to active history and UI
-      const activeConv = getActiveConversation();
-      activeConv.messages.push({ role: "user", content: uiDisplayPrompt });
-      appendMessage("user", uiDisplayPrompt);
-
-      // If it's a new conversation, set title to user prompt or attached file name
-      if (activeConv.title === "New Chat" && activeConv.messages.length === 1) {
-        let newTitle = prompt || (filesToSend.length > 0 ? `Analyze: ${filesToSend[0].name}` : "New Chat");
-        if (newTitle.length > 22) {
-          newTitle = newTitle.substring(0, 22) + "...";
-        }
-        activeConv.title = newTitle;
-      }
-      activeConv.timestamp = Date.now();
-      saveConversations();
-      renderHistoryList();
-
-      // Create assistant container with loader
+      // Create assistant container with loader immediately so user gets feedback
       const assistantRow = document.createElement("div");
       assistantRow.className = "message-row assistant";
       const assistantBubble = document.createElement("div");
@@ -2003,24 +2221,94 @@
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
 
+      // Check for GitHub URLs in the prompt
+      const githubUrlRegex = /https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(?:\/(?:blob|tree)\/[a-zA-Z0-9_.\-\/]+)?/gi;
+      const foundUrls = prompt.match(githubUrlRegex) || [];
+      const uniqueUrls = [...new Set(foundUrls)];
+      
+      if (uniqueUrls.length > 0) {
+        log(`Detected ${uniqueUrls.length} GitHub URL(s) in prompt. Fetching repository files...`, "process");
+        for (const url of uniqueUrls) {
+          try {
+            const files = await fetchGithubUrl(url);
+            if (files && files.length > 0) {
+              files.forEach(file => {
+                if (!filesToSend.some(f => f.name === file.name)) {
+                  filesToSend.push(file);
+                }
+              });
+              log(`Successfully loaded files from GitHub link: ${url}`, "success");
+            } else {
+              log(`No files retrieved from GitHub link: ${url}`, "info");
+            }
+          } catch (e) {
+            log(`Error fetching GitHub link ${url}: ${e.message}`, "error");
+          }
+        }
+      }
+
+      // Create user message representation for the UI (with appropriate document/image icons)
+      let uiDisplayPrompt = prompt;
+      if (filesToSend.length > 0) {
+        const fileListStr = filesToSend.map(f => {
+          const icon = f.type === 'image' ? '🖼️' : '📄';
+          return `${icon} \`${f.name}\``;
+        }).join(', ');
+        uiDisplayPrompt = (prompt ? prompt + "\n\n" : "") + `*Analyzed attachments:* ${fileListStr}`;
+      }
+
+      log(`User query submitted: "${prompt.substring(0, 40)}${prompt.length > 40 ? '...' : ''}"${filesToSend.length > 0 ? ` (with ${filesToSend.length} files)` : ''}`);
+
+      // Add user message to active history and UI BEFORE the assistant response
+      const activeConv = getActiveConversation();
+      activeConv.messages.push({ role: "user", content: uiDisplayPrompt });
+
+      const userRow = document.createElement("div");
+      userRow.className = `message-row user`;
+      const userBubble = document.createElement("div");
+      userBubble.className = "message-bubble";
+      userBubble.innerText = uiDisplayPrompt;
+      userRow.appendChild(userBubble);
+      
+      if (chatMessages && assistantRow.parentNode) {
+        chatMessages.insertBefore(userRow, assistantRow);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      // If it's a new conversation, set title to user prompt or attached file name
+      if (activeConv.title === "New Chat" && activeConv.messages.length === 1) {
+        let newTitle = prompt || (filesToSend.length > 0 ? `Analyze: ${filesToSend[0].name}` : "New Chat");
+        if (newTitle.length > 22) {
+          newTitle = newTitle.substring(0, 22) + "...";
+        }
+        activeConv.title = newTitle;
+      }
+      activeConv.timestamp = Date.now();
+      saveConversations();
+      renderHistoryList();
+
       log("Initiating server connection...", "process");
 
       const apiKey = apiKeyInput ? apiKeyInput.value.trim() : DEFAULT_KEY;
       const selectedModel = modelSelect ? modelSelect.value : "auto";
       const systemPrompt = PERSONAS[currentPersona].systemPrompt;
 
+      // Separate text files and image files
+      const textFiles = filesToSend.filter(f => f.type !== 'image');
+      const imageFiles = filesToSend.filter(f => f.type === 'image');
+
       // Construct final user content payload with injected file contexts
-      let finalUserContent = prompt;
-      if (filesToSend.length > 0) {
-        finalUserContent = `The user has attached the following file contents for your analysis. Read them thoroughly before answering:\n\n`;
-        filesToSend.forEach(file => {
+      let textPrompt = prompt;
+      if (textFiles.length > 0) {
+        textPrompt = `The user has attached the following file contents for your analysis. Read them thoroughly before answering:\n\n`;
+        textFiles.forEach(file => {
           const ext = file.name.split('.').pop() || 'text';
-          finalUserContent += `=== Attached File Content: ${file.name} ===\n\`\`\`${ext}\n${file.content}\n\`\`\`\n\n`;
+          textPrompt += `=== Attached File Content: ${file.name} ===\n\`\`\`${ext}\n${file.content}\n\`\`\`\n\n`;
         });
         if (prompt) {
-          finalUserContent += `=== User Query ===\n${prompt}`;
+          textPrompt += `=== User Query ===\n${prompt}`;
         } else {
-          finalUserContent += `=== User Query ===\nAnalyze the attached file(s) and provide a detailed overview, code explanation, or suggestions.`;
+          textPrompt += `=== User Query ===\nAnalyze the attached file(s) and provide a detailed overview, code explanation, or suggestions.`;
         }
       }
 
@@ -2029,6 +2317,28 @@
         { role: "system", content: systemPrompt },
         ...activeConv.messages.slice(0, -1)
       ];
+
+      // If we have images, construct the message content as an array of parts (multimodal vision support)
+      let finalUserContent;
+      if (imageFiles.length > 0) {
+        finalUserContent = [];
+        if (textPrompt) {
+          finalUserContent.push({ type: 'text', text: textPrompt });
+        } else {
+          finalUserContent.push({ type: 'text', text: 'Analyze these images.' });
+        }
+        imageFiles.forEach(img => {
+          finalUserContent.push({
+            type: 'image_url',
+            image_url: {
+              url: img.content
+            }
+          });
+        });
+      } else {
+        finalUserContent = textPrompt;
+      }
+
       messages.push({ role: "user", content: finalUserContent });
 
       const startTime = Date.now();

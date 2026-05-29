@@ -15,6 +15,10 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 interface GeminiPart {
   text?: string;
   thoughtSignature?: string;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
   functionCall?: {
     id?: string;
     name?: string;
@@ -193,9 +197,39 @@ function toGeminiContents(messages: ChatMessage[]) {
         };
       }
 
+      const userParts: GeminiPart[] = [];
+      if (typeof m.content === 'string') {
+        userParts.push({ text: m.content });
+      } else if (Array.isArray(m.content)) {
+        for (const block of m.content) {
+          if (typeof block === 'string') {
+            userParts.push({ text: block });
+          } else if (block && typeof block === 'object') {
+            const anyBlock = block as any;
+            if (block.type === 'text' && typeof block.text === 'string') {
+              userParts.push({ text: block.text });
+            } else if (block.type === 'image_url' && anyBlock.image_url && typeof anyBlock.image_url.url === 'string') {
+              const url = anyBlock.image_url.url;
+              if (url.startsWith('data:')) {
+                const match = url.match(/^data:([^;]+);base64,(.+)$/);
+                if (match) {
+                  const mimeType = match[1];
+                  const data = match[2];
+                  userParts.push({
+                    inlineData: { mimeType, data },
+                  });
+                }
+              }
+            }
+          }
+        }
+      } else {
+        userParts.push({ text: contentToString(m.content) });
+      }
+
       return {
         role: 'user',
-        parts: [{ text: contentToString(m.content) }],
+        parts: userParts.length > 0 ? userParts : [{ text: '' }],
       };
     })
     .filter((entry): entry is { role: 'user' | 'model'; parts: GeminiPart[] } => entry !== null);

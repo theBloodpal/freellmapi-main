@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { getAllPenalties } from '../services/router.js';
+import { queueDbBackup } from '../db/sync.js';
 
 export const fallbackRouter = Router();
 
@@ -79,6 +80,7 @@ fallbackRouter.put('/', (req: Request, res: Response) => {
     }
   });
   updateAll();
+  queueDbBackup();
 
   res.json({ success: true });
 });
@@ -109,6 +111,7 @@ fallbackRouter.post('/sort/:preset', (req: Request, res: Response) => {
     }
   });
   reorder();
+  queueDbBackup();
 
   res.json({ success: true, preset });
 });

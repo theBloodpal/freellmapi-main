@@ -80,6 +80,24 @@ async function uploadDbBackup(): Promise<void> {
   }
 }
 
+let uploadTimeout: NodeJS.Timeout | null = null;
+const DEBOUNCE_MS = 2000; // Wait 2 seconds of silence before uploading to avoid hammering
+
+/**
+ * Programmatically queues a database backup upload with a debounce.
+ */
+export function queueDbBackup(): void {
+  if (!isSyncEnabled) return;
+
+  if (uploadTimeout) {
+    clearTimeout(uploadTimeout);
+  }
+
+  uploadTimeout = setTimeout(async () => {
+    await uploadDbBackup();
+  }, DEBOUNCE_MS);
+}
+
 /**
  * Watches the local database file for changes and uploads it with a debounce.
  */
@@ -91,20 +109,11 @@ export function startDbBackupWatcher(): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  let uploadTimeout: NodeJS.Timeout | null = null;
-  const DEBOUNCE_MS = 10000; // Wait 10 seconds of silence before uploading to avoid hammering
-
   console.log(`Starting file watcher for SQLite database at ${DB_PATH}...`);
 
   fs.watch(dir, (eventType, filename) => {
     if (filename === 'freeapi.db' || filename === 'freeapi.db-wal') {
-      if (uploadTimeout) {
-        clearTimeout(uploadTimeout);
-      }
-
-      uploadTimeout = setTimeout(async () => {
-        await uploadDbBackup();
-      }, DEBOUNCE_MS);
+      queueDbBackup();
     }
   });
 

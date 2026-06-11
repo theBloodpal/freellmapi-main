@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { encrypt, decrypt, maskKey } from '../lib/crypto.js';
+import { queueDbBackup } from '../db/sync.js';
 
 export const keysRouter = Router();
 
@@ -66,6 +67,8 @@ keysRouter.post('/', (req: Request, res: Response) => {
     VALUES (?, ?, ?, ?, ?, 'unknown', 1)
   `).run(platform, label ?? '', encrypted, iv, authTag);
 
+  queueDbBackup();
+
   res.status(201).json({
     id: result.lastInsertRowid,
     platform,
@@ -92,6 +95,7 @@ keysRouter.delete('/:id', (req: Request, res: Response) => {
     return;
   }
 
+  queueDbBackup();
   res.json({ success: true });
 });
 
@@ -117,5 +121,6 @@ keysRouter.patch('/:id', (req: Request, res: Response) => {
     return;
   }
 
+  queueDbBackup();
   res.json({ success: true, enabled });
 });

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { getUnifiedApiKey, regenerateUnifiedKey } from '../db/index.js';
+import { queueDbBackup } from '../db/sync.js';
 
 export const settingsRouter = Router();
 
@@ -12,5 +13,6 @@ settingsRouter.get('/api-key', (_req: Request, res: Response) => {
 // Regenerate the unified API key
 settingsRouter.post('/api-key/regenerate', (_req: Request, res: Response) => {
   const newKey = regenerateUnifiedKey();
+  queueDbBackup();
   res.json({ apiKey: newKey });
 });

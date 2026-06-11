@@ -2,6 +2,7 @@ import { getDb } from '../db/index.js';
 import { getProvider } from '../providers/index.js';
 import { decrypt } from '../lib/crypto.js';
 import type { Platform, KeyStatus } from '@freellmapi/shared/types.js';
+import { queueDbBackup } from '../db/sync.js';
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const CONSECUTIVE_FAILURES_TO_DISABLE = 3;
@@ -25,6 +26,7 @@ export async function checkKeyHealth(keyId: number): Promise<KeyStatus> {
 
     db.prepare("UPDATE api_keys SET status = ?, last_checked_at = datetime('now') WHERE id = ?")
       .run(status, keyId);
+    queueDbBackup();
 
     if (isValid) {
       failureCount.delete(keyId);
@@ -34,6 +36,7 @@ export async function checkKeyHealth(keyId: number): Promise<KeyStatus> {
 
       if (count >= CONSECUTIVE_FAILURES_TO_DISABLE) {
         db.prepare('UPDATE api_keys SET enabled = 0 WHERE id = ?').run(keyId);
+        queueDbBackup();
         console.log(`[Health] Auto-disabled key ${keyId} after ${count} consecutive failures`);
       }
     }
@@ -46,6 +49,7 @@ export async function checkKeyHealth(keyId: number): Promise<KeyStatus> {
     console.error(`[Health] Key ${keyId} transport error:`, err.message);
     db.prepare("UPDATE api_keys SET status = ?, last_checked_at = datetime('now') WHERE id = ?")
       .run('error', keyId);
+    queueDbBackup();
     return 'error';
   }
 }

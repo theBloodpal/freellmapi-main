@@ -42,8 +42,11 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: false, hsts: false }));
   app.use(cors({
     origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-      // Allow all origins since endpoints are protected by the Bearer API Key
-      callback(null, true);
+      if (!origin || allowedCorsOrigins.has(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
     },
     exposedHeaders: ['X-Routed-Via', 'X-Fallback-Attempts'],
   }));

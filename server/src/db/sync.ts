@@ -55,7 +55,7 @@ export async function restoreDbBackup(): Promise<void> {
 async function uploadDbBackup(): Promise<void> {
   if (!isSyncEnabled || !fs.existsSync(DB_PATH)) return;
 
-  const url = `${SUPABASE_URL}/storage/v1/object/authenticated/${SUPABASE_BUCKET}/freeapi.db`;
+  const url = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/freeapi.db`;
   console.log(`Uploading database backup to ${url}...`);
 
   try {
